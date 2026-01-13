@@ -10,7 +10,7 @@ interface MatchCardProps {
 }
 
 const PointTrendChart: React.FC<{ history: number[] }> = ({ history }) => {
-  if (history.length < 2) return <div className="h-16 flex items-center justify-center text-[8px] text-slate-600 font-bold uppercase tracking-widest">數據採集中...</div>;
+  if (!history || history.length < 2) return <div className="h-16 flex items-center justify-center text-[8px] text-slate-600 font-bold uppercase tracking-widest bg-slate-900/20 rounded-lg">待數據同步...</div>;
   const width = 300;
   const height = 60;
   const barWidth = Math.max(2, (width - 20) / history.length);
@@ -37,15 +37,15 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onUpdateScore, onUpdateQua
 
   const getScenarioLabel = (scenario: MatchScenario) => {
     switch (scenario) {
-      case MatchScenario.SIMILAR_STRENGTH: return { text: '勢均力敵', color: 'bg-blue-600', border: 'border-blue-400' };
-      case MatchScenario.BIG_DIFFERENCE: return { text: '實力懸殊', color: 'bg-purple-600', border: 'border-purple-400' };
-      default: return { text: '普通賽事', color: 'bg-gray-600', border: 'border-gray-400' };
+      case MatchScenario.SIMILAR_STRENGTH: return { text: '勢均力敵', color: 'bg-indigo-600' };
+      case MatchScenario.BIG_DIFFERENCE: return { text: '強弱懸殊', color: 'bg-orange-600' };
+      default: return null;
     }
   };
 
   const scenarioInfo = getScenarioLabel(match.scenario);
-  const deficit = Math.abs(match.homeScore - match.awayScore);
-  const timeWindowOpen = match.quarter <= 2;
+  const isLive = match.status === 'LIVE';
+  const isBigDiff = match.scenario === MatchScenario.BIG_DIFFERENCE;
 
   const handleGetInsight = async () => {
     setLoadingInsight(true);
@@ -54,75 +54,79 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, onUpdateScore, onUpdateQua
     setLoadingInsight(false);
   };
 
+  const TeamSection = ({ team, odds, isStronger }: { team: any, odds: string, isStronger: boolean }) => (
+    <div className={`flex flex-col items-center w-1/3 p-4 rounded-3xl transition-all duration-500 ${isStronger && isBigDiff ? 'bg-indigo-500/10 border-2 border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.2)] scale-110 z-10' : 'border border-transparent'}`}>
+      <img src={team.logo} alt={team.name} className="w-16 h-16 rounded-full border-2 border-slate-700 mb-2 shadow-xl" />
+      <h3 className="text-sm font-black text-center leading-tight mb-1">{team.shortName}</h3>
+      <p className="text-[10px] font-bold text-indigo-400 uppercase">{team.record || '載入中'}</p>
+      <div className="mt-3 px-3 py-1 bg-slate-800 rounded-lg border border-slate-700">
+        <p className="text-[11px] font-black text-white">{odds.startsWith('-') || odds.startsWith('+') ? odds : `+${odds}`}</p>
+      </div>
+      {isStronger && isBigDiff && <span className="mt-2 text-[8px] font-black text-indigo-400 uppercase tracking-widest">強隊標記</span>}
+    </div>
+  );
+
   return (
-    <div className={`bg-slate-900/40 rounded-3xl p-8 border border-slate-800 relative overflow-hidden transition-all duration-500`}>
-      <div className="flex justify-between items-start mb-8">
+    <div className="bg-slate-900/40 rounded-[2.5rem] p-8 border border-slate-800 relative overflow-hidden transition-all duration-500">
+      <div className="flex justify-between items-start mb-10">
         <div className="flex gap-2">
-          <span className={`${scenarioInfo.color} text-white text-[9px] font-black px-3 py-1 rounded-lg uppercase tracking-wider shadow-lg`}>
-            {scenarioInfo.text}
-          </span>
-          <span className={`text-[9px] font-black px-3 py-1 rounded-lg uppercase tracking-wider ${timeWindowOpen ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-            {timeWindowOpen ? '策略窗口開啟' : '窗口已關閉'}
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          {match.sourceUrls && match.sourceUrls.length > 0 && (
-            <div className="flex items-center gap-1 group relative">
-              <span className="text-[10px] text-indigo-400 font-bold uppercase cursor-help">🔗 實時驗證</span>
-              <div className="absolute top-full right-0 mt-2 hidden group-hover:block bg-slate-900 border border-slate-700 p-3 rounded-xl z-50 shadow-2xl min-w-[200px]">
-                <p className="text-[9px] font-black text-slate-500 uppercase mb-2">數據來源 (Google Search)</p>
-                {match.sourceUrls.map((s, i) => (
-                  <a key={i} href={s.uri} target="_blank" className="block text-[10px] text-white hover:text-indigo-400 py-1 border-t border-slate-800 first:border-0 truncate">{s.title}</a>
-                ))}
-              </div>
-            </div>
+          {scenarioInfo && (
+            <span className={`${scenarioInfo.color} text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-wider shadow-lg`}>
+              {scenarioInfo.text}
+            </span>
           )}
-          <select 
-            value={match.quarter} 
-            onChange={(e) => onUpdateQuarter(match.id, parseInt(e.target.value))}
-            className="bg-slate-800 text-[10px] border border-slate-700 rounded-lg px-2 py-1 focus:outline-none text-slate-300 font-black uppercase"
-          >
-            {[1,2,3,4].map(q => <option key={q} value={q}>Q{q}</option>)}
-          </select>
+          <span className={`text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-wider ${isLive ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-slate-400'}`}>
+            {isLive ? 'LIVE' : match.status}
+          </span>
         </div>
+        {match.sourceUrls && match.sourceUrls.length > 0 && (
+          <div className="flex items-center gap-1 group relative">
+            <span className="text-[10px] text-slate-500 font-bold uppercase cursor-help">Verified Sources ⓘ</span>
+            <div className="absolute top-full right-0 mt-2 hidden group-hover:block bg-slate-900 border border-slate-700 p-3 rounded-xl z-50 shadow-2xl min-w-[220px]">
+              {match.sourceUrls.map((s, i) => (
+                <a key={i} href={s.uri} target="_blank" rel="noopener noreferrer" className="block text-[10px] text-indigo-400 hover:text-white py-1.5 border-t border-slate-800 first:border-0 truncate">{s.title}</a>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex flex-col items-center w-1/3">
-          <img src={match.homeTeam.logo} alt={match.homeTeam.name} className="w-16 h-16 rounded-full border-2 border-slate-700 mb-2 shadow-xl" />
-          <h3 className="text-sm font-black text-center h-8 leading-tight">{match.homeTeam.shortName}</h3>
-          <p className="text-[10px] font-bold text-slate-500 uppercase mt-1">Spread {match.spread > 0 ? `+${match.spread}` : match.spread}</p>
-        </div>
-        <div className="flex flex-col items-center w-1/3">
-          <div className={`text-5xl font-black text-white italic tracking-tighter drop-shadow-2xl ${deficit >= 10 ? 'text-indigo-400' : ''}`}>
+      <div className="flex items-center justify-between mb-8 gap-4">
+        <TeamSection 
+          team={match.homeTeam} 
+          odds={match.homeOdds} 
+          isStronger={match.strongerTeamId === match.homeTeam.id} 
+        />
+        
+        <div className="flex flex-col items-center w-1/4">
+          <div className="text-4xl font-black text-white italic tracking-tighter tabular-nums">
             {match.homeScore} : {match.awayScore}
           </div>
-          <div className="text-[10px] text-indigo-400 font-black mt-3 bg-indigo-500/10 px-3 py-1 rounded-full uppercase tracking-widest">Q{match.quarter}</div>
+          {isLive && <div className="text-[9px] text-indigo-400 font-black mt-4 bg-indigo-500/10 px-3 py-1 rounded-full uppercase tracking-widest">Quarter {match.quarter}</div>}
         </div>
-        <div className="flex flex-col items-center w-1/3">
-          <img src={match.awayTeam.logo} alt={match.awayTeam.name} className="w-16 h-16 rounded-full border-2 border-slate-700 mb-2 shadow-xl" />
-          <h3 className="text-sm font-black text-center h-8 leading-tight">{match.awayTeam.shortName}</h3>
-          <p className="text-[10px] font-bold text-slate-500 uppercase mt-1">Spread {match.spread > 0 ? `${-match.spread}` : `+${Math.abs(match.spread)}`}</p>
-        </div>
+
+        <TeamSection 
+          team={match.awayTeam} 
+          odds={match.awayOdds} 
+          isStronger={match.strongerTeamId === match.awayTeam.id} 
+        />
       </div>
 
-      <div className="mb-8">
-        <PointTrendChart history={match.scoreHistory} />
-      </div>
+      <PointTrendChart history={match.scoreHistory} />
 
-      <div className="space-y-4">
+      <div className="mt-10">
         {insight ? (
-          <div className="p-5 rounded-2xl border bg-indigo-500/5 border-indigo-500/20 animate-slide-in">
-            <p className="text-[9px] font-black mb-3 text-indigo-400 uppercase tracking-widest">AI POLYMARKET STRATEGY</p>
+          <div className="p-6 rounded-[2rem] border bg-indigo-500/5 border-indigo-500/20 animate-slide-in">
+            <p className="text-[9px] font-black mb-3 text-indigo-400 uppercase tracking-widest">Poly-Insight Strategy Engine</p>
             <p className="text-[13px] text-slate-200 leading-relaxed font-medium">{insight}</p>
           </div>
         ) : (
           <button 
             onClick={handleGetInsight}
             disabled={loadingInsight}
-            className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-[11px] font-black rounded-2xl uppercase tracking-widest transition-all shadow-lg"
+            className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-[11px] font-black rounded-[1.5rem] uppercase tracking-widest transition-all shadow-xl active:scale-95"
           >
-            {loadingInsight ? '分析中...' : '獲取 POLYMARKET 洞察'}
+            {loadingInsight ? '正在深度分析數據...' : '生成 Polymarket 對沖策略'}
           </button>
         )}
       </div>

@@ -1,7 +1,6 @@
-
 {
-  "name": "NBA Poly-Insight",
-  "short_name": "PolyInsight",
+  "name": "NBA Polymarket Flip",
+  "short_name": "PolyFlip",
   "description": "NBA Polymarket Investment Strategy Tool",
   "start_url": "/",
   "display": "standalone",

@@ -1,74 +1,137 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Match, GroundingSource } from "../types";
+import { Match, GroundingSource, MatchScenario } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-/**
- * Using any[] for matches because the LLM returns strings for team names, 
- * which doesn't match the Team object structure in Partial<Match>.
- */
-export const fetchLiveNBAData = async (): Promise<{ matches: any[], sources: GroundingSource[] }> => {
-  const prompt = `
-    Search for the latest NBA scores and betting odds for today's games (e.g., from ESPN, NBA.com, and Polymarket).
-    Return the data for at least 3 active or upcoming games.
-    Format the response as a JSON array of objects with: 
-    - homeTeam (string), awayTeam (string), homeScore (number), awayScore (number), 
-    - quarter (number), homeOdds (number), awayOdds (number).
-  `;
-
+export const fetchLiveNBAData = async (): Promise<{ matches: Match[], sources: GroundingSource[] }> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  const searchPrompt = `Find all active and upcoming NBA games for today. For each game, retrieve:
+  1. Current scores and status (LIVE/SCHEDULED/FINISHED).
+  2. Team season records (W-L).
+  3. Current Point Spread for both teams (e.g., Home -8.5, Away +8.5).`;
+  
   try {
-    const response = await ai.models.generateContent({
+    const searchResponse = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: prompt,
+      contents: searchPrompt,
       config: {
         tools: [{ googleSearch: {} }],
+      },
+    });
+
+    const sources: GroundingSource[] = searchResponse.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
+      title: chunk.web?.title || "NBA Data Source",
+      uri: chunk.web?.uri || ""
+    })).filter((s: any) => s.uri) || [];
+
+    const rawData = searchResponse.text;
+    if (!rawData) return { matches: [], sources };
+
+    const formatPrompt = `
+      Based on the raw NBA data, extract a JSON array. 
+      Data: ${rawData}
+      JSON keys: "homeTeamName", "awayTeamName", "homeTeamShort", "awayTeamShort", "homeScore", "awayScore", "status", "quarter", "homeRecord", "awayRecord", "homeSpread", "awaySpread".
+      Ensure "homeSpread" and "awaySpread" are strings like "+1.5" or "-10.0".
+    `;
+
+    const formatResponse = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: formatPrompt,
+      config: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
           items: {
             type: Type.OBJECT,
             properties: {
-              homeTeam: { type: Type.STRING },
-              awayTeam: { type: Type.STRING },
+              homeTeamName: { type: Type.STRING },
+              awayTeamName: { type: Type.STRING },
+              homeTeamShort: { type: Type.STRING },
+              awayTeamShort: { type: Type.STRING },
               homeScore: { type: Type.NUMBER },
               awayScore: { type: Type.NUMBER },
+              status: { type: Type.STRING },
               quarter: { type: Type.NUMBER },
-              homeOdds: { type: Type.NUMBER },
-              awayOdds: { type: Type.NUMBER },
+              homeRecord: { type: Type.STRING },
+              awayRecord: { type: Type.STRING },
+              homeSpread: { type: Type.STRING },
+              awaySpread: { type: Type.STRING },
             },
-            required: ["homeTeam", "awayTeam", "homeScore", "awayScore"]
+            required: ["homeTeamName", "awayTeamName", "status"]
           }
         }
-      },
+      }
     });
 
-    // Extracting text output from GenerateContentResponse using the .text property
-    const jsonStr = response.text || "[]";
+    const jsonStr = formatResponse.text || "[]";
     const data = JSON.parse(jsonStr);
-    const sources: GroundingSource[] = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
-      title: chunk.web?.title || "NBA Data Source",
-      uri: chunk.web?.uri || ""
-    })).filter((s: any) => s.uri) || [];
+    
+    const matches: Match[] = data.map((item: any, index: number) => {
+      const hSpreadStr = item.homeSpread || "0";
+      const aSpreadStr = item.awaySpread || "0";
+      const hSpreadNum = parseFloat(hSpreadStr);
+      
+      let scenario = MatchScenario.NONE;
+      const absSpread = Math.abs(hSpreadNum);
+      
+      if (absSpread <= 2.5) {
+        scenario = MatchScenario.SIMILAR_STRENGTH;
+      } else if (absSpread >= 10) {
+        scenario = MatchScenario.BIG_DIFFERENCE;
+      }
 
-    return { matches: data, sources };
+      return {
+        id: `real-${index}-${item.homeTeamShort || index}`,
+        homeTeam: {
+          id: `h-${index}`,
+          name: item.homeTeamName,
+          shortName: item.homeTeamShort || item.homeTeamName.substring(0, 3).toUpperCase(),
+          logo: `https://avatar.vercel.sh/${item.homeTeamShort || item.homeTeamName}?size=100`,
+          record: item.homeRecord
+        },
+        awayTeam: {
+          id: `a-${index}`,
+          name: item.awayTeamName,
+          shortName: item.awayTeamShort || item.awayTeamName.substring(0, 3).toUpperCase(),
+          logo: `https://avatar.vercel.sh/${item.awayTeamShort || item.awayTeamName}?size=100`,
+          record: item.awayRecord
+        },
+        homeScore: item.homeScore || 0,
+        awayScore: item.awayScore || 0,
+        status: item.status?.toUpperCase().includes('LIVE') ? 'LIVE' : (item.status?.toUpperCase().includes('FINISH') ? 'FINISHED' : 'SCHEDULED'),
+        homeOdds: hSpreadStr,
+        awayOdds: aSpreadStr,
+        spread: hSpreadNum,
+        scenario: scenario,
+        strongerTeamId: hSpreadNum < 0 ? `h-${index}` : (parseFloat(aSpreadStr) < 0 ? `a-${index}` : null),
+        quarter: item.quarter || 1,
+        notifiedBuckets: [],
+        maxDeficitRecorded: 0,
+        recoverySteps: [],
+        boughtTeamId: null,
+        plStatus: null,
+        scoreHistory: [],
+        startTime: Date.now(),
+        sourceUrls: sources
+      };
+    });
+
+    return { matches, sources };
   } catch (error) {
     console.error("Live Data Fetch Error:", error);
     return { matches: [], sources: [] };
   }
 };
 
-export const getAIBettingInsight = async (match: Match, isRepeatLosing: boolean = false): Promise<string> => {
-  const deficit = Math.abs(match.homeScore - match.awayScore);
-  
+export const getAIBettingInsight = async (match: Match): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
-    As an NBA betting expert, analyze:
-    Match: ${match.homeTeam.name} vs ${match.awayTeam.name}
-    Score: ${match.homeScore} - ${match.awayScore} (Diff: ${deficit})
-    Quarter: ${match.quarter}
-    Scenario: ${match.scenario}
+    Analyze NBA Game: ${match.homeTeam.name} (${match.homeTeam.record}) vs ${match.awayTeam.name} (${match.awayTeam.record})
+    Current Score: ${match.homeScore} - ${match.awayScore}
+    Handicap/Spread: Home ${match.homeOdds}, Away ${match.awayOdds}
     
-    Provide a strategy (Buy/Flip/Wait) for Polymarket investors in 100 words (Traditional Chinese).
+    If the favorite (negative spread) is down by 10+ in first half, suggest a Polymarket recovery bet.
+    Answer in Traditional Chinese (max 120 words).
   `;
 
   try {
@@ -76,8 +139,7 @@ export const getAIBettingInsight = async (match: Match, isRepeatLosing: boolean 
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
-    // The response.text property directly returns the string output.
-    return response.text || "分析中...";
+    return response.text || "正在分析盤口趨勢...";
   } catch (error) {
     return "分析生成失敗。";
   }

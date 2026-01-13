@@ -2,7 +2,7 @@
 export enum MatchScenario {
   SIMILAR_STRENGTH = 'SIMILAR_STRENGTH',
   BIG_DIFFERENCE = 'BIG_DIFFERENCE',
-  NORMAL = 'NORMAL'
+  NONE = 'NONE'
 }
 
 export interface Team {
@@ -10,6 +10,7 @@ export interface Team {
   name: string;
   shortName: string;
   logo: string;
+  record?: string;
 }
 
 export interface TelegramConfig {
@@ -24,6 +25,14 @@ export interface GroundingSource {
   uri: string;
 }
 
+export interface HistoricalSignal {
+  date: string;
+  match: string;
+  condition: string;
+  outcome: 'WIN' | 'LOSS';
+  profit: string;
+}
+
 export interface Match {
   id: string;
   homeTeam: Team;
@@ -31,9 +40,9 @@ export interface Match {
   homeScore: number;
   awayScore: number;
   status: 'SCHEDULED' | 'LIVE' | 'FINISHED';
-  homeOdds: number;
-  awayOdds: number;
-  spread: number;
+  homeOdds: string; // Now used for spread e.g. "+1.5"
+  awayOdds: string; // Now used for spread e.g. "-1.5"
+  spread: number;   // Numeric spread for logic
   scenario: MatchScenario;
   strongerTeamId: string | null;
   quarter: number;
@@ -59,4 +68,5 @@ export interface TradeStats {
   totalBuyMatches: number;
   totalWinMatches: number;
   winRate: number;
+  historicalLog: HistoricalSignal[];
 }

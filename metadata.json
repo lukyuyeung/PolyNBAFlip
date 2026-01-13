@@ -1,5 +1,5 @@
 {
-  "name": "NBA Polymarket 投資洞察助手",
+  "name": "NBA Polymarket Flip",
   "description": "專為 NBA 博弈設計的投資洞察工具，實時追蹤比賽分差，根據盤口強弱提供 Polymarket 買入與對沖提醒。",
   "requestFramePermissions": []
 }

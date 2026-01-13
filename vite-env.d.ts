@@ -1,4 +1,3 @@
-/// <reference types="vite/client" />
 
 /**
  * Augment the global NodeJS namespace to include API_KEY in process.env.
